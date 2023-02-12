@@ -7,8 +7,6 @@ import logrus
 import urllib
 import yaml
 
-url = "http://localhost:5000/predict"
-
 class Records:
     def __init__(self, id, created_at, color, roll):
         self.id = id
@@ -41,13 +39,17 @@ def read_config(file):
             config = yaml.safe_load(stream)
             channel = config['Channel']
             chat_id = config['ChatID']
-            return channel, chat_id
+            model = config['Model']
+            blaze = config['Blaze']
+            return channel, chat_id, model, blaze
         except yaml.YAMLError as e:
             print(e)
 
+channel, chat_id, model, blaze = read_config('config.yml')
+
 def getBlazeData():
     colors = []
-    data = requests.get("https://blaze.com/api/roulette_games/history")
+    data = requests.get(blaze)
     if data.status_code != 200:
         raise Exception("Error getting data from blaze.com")
     result = TotalPages(0, [])
@@ -67,7 +69,7 @@ def convert_to_numbers(colors):
 
 def callModel(payload):
     headers = {'content-type': 'application/json'}
-    response = requests.post(url, json=payload, headers=headers)
+    response = requests.post(model, json=payload, headers=headers)
 
     if response.status_code == 200:
         return response.json()["output"]
@@ -76,7 +78,6 @@ def callModel(payload):
 
 
 def send_message_to_telegram_channel(text):
-    channel, chat_id = read_config('config.yml')
     emoji = ""
     message = ""
     if text == "2":
