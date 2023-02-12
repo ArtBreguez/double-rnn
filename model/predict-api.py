@@ -1,5 +1,11 @@
 import json
 import requests
+import os
+import ioutil
+import logging
+import logrus
+import urllib
+import yaml
 
 url = "http://localhost:5000/predict"
 
@@ -29,6 +35,16 @@ class Config:
 lastHash = bytearray(32)
 latestColor = ""
 
+def read_config(file):
+    with open(file, 'r') as stream:
+        try:
+            config = yaml.safe_load(stream)
+            channel = config['Channel']
+            chat_id = config['ChatID']
+            return channel, chat_id
+        except yaml.YAMLError as e:
+            print(e)
+
 def getBlazeData():
     colors = []
     data = requests.get("https://blaze.com/api/roulette_games/history")
@@ -41,7 +57,6 @@ def getBlazeData():
             break
         colors.append(v["color"])
     colors = list(reversed(colors))
-    print(colors)
     return colors
 
 def convert_to_numbers(colors):
@@ -55,9 +70,54 @@ def callModel(payload):
     response = requests.post(url, json=payload, headers=headers)
 
     if response.status_code == 200:
-        print(response.json())
+        return response.json()["output"]
     else:
         print("Erro ao fazer a requisição")
 
-colors = getBlazeData()
-callModel(convert_to_numbers(colors))
+
+def send_message_to_telegram_channel(text):
+    channel, chat_id = read_config('config.yml')
+    emoji = ""
+    message = ""
+    if text == "2":
+        emoji = "⚫"
+    elif text == "1":
+        emoji = "🔴"
+    elif text == "0":
+        emoji = "⚪"
+    elif text == "Win":
+        emoji = "Win 🏆"
+    elif text == "Loss":
+        emoji = "Loss 👎"
+    else:
+        return
+
+    if emoji == "🏆":
+        message = "Win " + emoji
+    elif emoji == "👎":
+        message = "Loss " + emoji
+    else:
+        message = "A próxima jogada é " + emoji
+
+    encoded_message = urllib.parse.quote(message)
+    url = "https://api.telegram.org/bot" + channel + "/sendMessage?chat_id=" + chat_id + "&text=" + encoded_message
+
+    try:
+        file = open("logs/requests.log", "a")
+    except:
+        logging.error("Failed to open file logs/requests.log")
+        return
+
+    try:
+        resp = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        logging.error("Error sending message to telegram channel: " + str(e))
+        file.close()
+        return
+
+    body = resp.text
+    logging.basicConfig(filename="logs/requests.log", level=logging.INFO)
+    logging.info(body)
+    file.close()
+
+send_message_to_telegram_channel(callModel(convert_to_numbers(getBlazeData())))
