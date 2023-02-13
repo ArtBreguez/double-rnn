@@ -12,6 +12,10 @@ from telethon.tl.types import PeerChannel
 import asyncio
 from telethon.tl.functions.channels import JoinChannelRequest
 import time
+import numpy as np
+import keras
+from keras.models import load_model
+from keras.utils import np_utils
 
 class Records:
     def __init__(self, id, created_at, color, roll):
@@ -52,7 +56,7 @@ def getBlazeData():
     result = TotalPages(0, [])
     result = json.loads(data.text)
     for i, v in enumerate(result["records"]):
-        if i == 15:
+        if i == 14:
             break
         colors.append(v["color"])
     colors = list(reversed(colors))
@@ -118,8 +122,32 @@ def send_message_to_telegram_channel(text):
     logging.info(body)
     file.close()
 
+model = keras.models.load_model('model.h5')
+
+def predict_from_model(input_str):
+    # Carregar o modelo salvo em disco
+    model = load_model("model.h5")
+    
+    # Converter a string de entrada em um array numpy
+    input_data = np.array([[int(x) for x in input_str.split(',')]])
+    input_data = np.reshape(input_data, (len(input_data), len(input_data[0]), 1))
+    
+    # Realizar a previsão
+    y = model.predict(input_data)
+    
+    # Converter a saída prevista para o formato original
+    y = np.argmax(y, axis=1)
+    
+    return y[0]
+
 def getMachineGuess():
-    return send_message_to_telegram_channel(callModel(convert_to_numbers(getBlazeData())))
+    input_data = convert_to_numbers(getBlazeData())
+    input_data  = str(input_data).replace("'", '"')
+    input_data = input_data.replace('"input": "', '"input":"')
+    input_data = json.loads(input_data)
+    input_value = input_data["input"]
+    prediction = predict_from_model(input_value)
+    send_message_to_telegram_channel(prediction)
 
 async def listenMessages():
 
