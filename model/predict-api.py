@@ -6,6 +6,12 @@ import logging
 import logrus
 import urllib
 import yaml
+import telethon
+from telethon import TelegramClient
+from telethon.tl.types import PeerChannel
+import asyncio
+from telethon.tl.functions.channels import JoinChannelRequest
+import time
 
 class Records:
     def __init__(self, id, created_at, color, roll):
@@ -19,18 +25,6 @@ class TotalPages:
         self.total_pages = total_pages
         self.records = records
 
-class Config:
-    def __init__(self, channel, chatID, blaze, chatGPT, token, model, maxTokens, temperature):
-        self.channel = channel
-        self.chatID = chatID
-        self.blaze = blaze
-        self.chatGPT = chatGPT
-        self.token = token
-        self.model = model
-        self.maxTokens = maxTokens
-        self.temperature = temperature
-
-lastHash = bytearray(32)
 latestColor = ""
 
 def read_config(file):
@@ -41,11 +35,14 @@ def read_config(file):
             chat_id = config['ChatID']
             model = config['Model']
             blaze = config['Blaze']
-            return channel, chat_id, model, blaze
+            API_HASH = config['API_HASH']
+            API_ID = config['API_ID']
+            CHANNEL_LINK = config['CHANNEL_LINK']
+            return channel, chat_id, model, blaze, API_HASH, API_ID, CHANNEL_LINK
         except yaml.YAMLError as e:
             print(e)
 
-channel, chat_id, model, blaze = read_config('config.yml')
+channel, chat_id, model, blaze, API_HASH, API_ID, CHANNEL_LINK = read_config('config.yml')
 
 def getBlazeData():
     colors = []
@@ -121,4 +118,43 @@ def send_message_to_telegram_channel(text):
     logging.info(body)
     file.close()
 
-send_message_to_telegram_channel(callModel(convert_to_numbers(getBlazeData())))
+def getMachineGuess():
+    return send_message_to_telegram_channel(callModel(convert_to_numbers(getBlazeData())))
+
+async def listenMessages():
+
+    # Caminho para o arquivo com o número de telefone e o código de autenticação
+    session_file = 'session_name.session'
+
+    # Inicializa o cliente
+    client = TelegramClient(session_file, API_ID, API_HASH)
+
+    # Conecta ao Telegram
+    await client.start()
+
+    # Encontra o ID do grupo
+    group = await client.get_entity(CHANNEL_LINK)
+    if isinstance(group, telethon.tl.types.Channel):
+        print('ID do canal:', group.id)
+        print('Nome do canal:', group.title)
+        # Se inscreve no canal
+        await client(JoinChannelRequest(group.id))
+        # Inicia a escuta das mensagens
+        print('Escutando mensagens do canal...')
+        while True:
+            messages = await client.get_messages(group.id, limit=1)
+            message = messages[0]
+            if message.message.strip().lower() == 'roll':
+                getMachineGuess()
+            await asyncio.sleep(2)
+    else:
+        print(f'Canal "{CHANNEL_LINK}" não encontrado')
+        # Encerra a conexão
+        await client.disconnect()
+
+    
+async def main():
+    await listenMessages()
+
+# Iniciar a execução da função main
+asyncio.run(main())
